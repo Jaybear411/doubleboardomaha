@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Double Board Omaha</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 20px; color: #00d9ff; }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        select, button {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        select {
+            background: #2d2d44;
+            color: #eee;
+            border: 1px solid #444;
+        }
+        button {
+            background: #00d9ff;
+            color: #1a1a2e;
+            font-weight: bold;
+        }
+        button:hover { background: #00b8d4; }
+        button:disabled { background: #555; color: #888; cursor: not-allowed; }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #2d2d44;
+            border-radius: 4px;
+        }
+        .info-row span { font-size: 14px; }
+        
+        .hand-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #252538;
+            border-radius: 6px;
+        }
+        .hand-label {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .cards {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .card {
+            width: 45px;
+            height: 65px;
+            background: #fff;
+            color: #000;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .card.heart, .card.diamond { color: #e74c3c; }
+        .card.spade, .card.club { color: #2c3e50; }
+        .card.hidden { background: #3498db; color: #3498db; }
+        
+        .boards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .board {
+            padding: 15px;
+            background: #1e5631;
+            border-radius: 6px;
+        }
+        .board-label {
+            font-size: 12px;
+            color: #90EE90;
+            margin-bottom: 8px;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .action-btn {
+            padding: 12px 20px;
+            font-size: 14px;
+            min-width: 80px;
+        }
+        .action-btn.check { background: #27ae60; }
+        .action-btn.bet { background: #e67e22; }
+        .action-btn.call { background: #3498db; }
+        .action-btn.fold { background: #e74c3c; }
+        .action-btn.raise { background: #9b59b6; }
+        .action-btn.jam { background: #c0392b; }
+        
+        .message {
+            text-align: center;
+            padding: 15px;
+            background: #2d2d44;
+            border-radius: 6px;
+            min-height: 50px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .message.winner { background: #27ae60; }
+        .message.loser { background: #c0392b; }
+        
+        .turn-indicator {
+            text-align: center;
+            font-size: 14px;
+            color: #00d9ff;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Double Board Omaha</h1>
+        
+        <div class="controls">
+            <select id="strategy">
+                <option value="sl">SL (Average Strategy)</option>
+                <option value="rl">RL (Best Response)</option>
+                <option value="mixed">Mixed (NFSP)</option>
+            </select>
+            <button onclick="newGame()">New Game</button>
+        </div>
+        
+        <div class="info-row">
+            <span>Street: <strong id="street">-</strong></span>
+            <span>Pot: <strong id="pot">0</strong></span>
+            <span>Bet: <strong id="bet">0</strong></span>
+            <span>Dealer: <strong id="dealer">-</strong></span>
+        </div>
+        
+        <div class="info-row">
+            <span>Your Stack: <strong id="player-stack">100</strong></span>
+            <span>Bot Stack: <strong id="bot-stack">100</strong></span>
+        </div>
+        
+        <div class="hand-section">
+            <div class="hand-label">Bot's Hand</div>
+            <div class="cards" id="bot-hand"></div>
+        </div>
+        
+        <div class="boards">
+            <div class="board">
+                <div class="board-label">Board 1</div>
+                <div class="cards" id="board1"></div>
+            </div>
+            <div class="board">
+                <div class="board-label">Board 2</div>
+                <div class="cards" id="board2"></div>
+            </div>
+        </div>
+        
+        <div class="hand-section">
+            <div class="hand-label">Your Hand</div>
+            <div class="cards" id="player-hand"></div>
+        </div>
+        
+        <div class="turn-indicator" id="turn">-</div>
+        
+        <div class="actions" id="actions"></div>
+        
+        <div class="message" id="message">Select a strategy and click "New Game" to start</div>
+    </div>
+
+    <script>
+        function cardHtml(cardStr) {
+            if (cardStr === '??') {
+                return '<div class="card hidden">??</div>';
+            }
+            const suit = cardStr[1];
+            const suitMap = { 's': '♠', 'h': '♥', 'd': '♦', 'c': '♣' };
+            const suitClass = { 's': 'spade', 'h': 'heart', 'd': 'diamond', 'c': 'club' };
+            return `<div class="card ${suitClass[suit]}">${cardStr[0]}${suitMap[suit]}</div>`;
+        }
+        
+        function renderCards(containerId, cards) {
+            document.getElementById(containerId).innerHTML = cards.map(cardHtml).join('');
+        }
+        
+        // Action labels depend on whether facing a bet
+        function getActionLabel(action, facingBet, pot, currentBet) {
+            if (facingBet) {
+                // Facing bet: 0=call, 1=raise, 2=jam, 3=fold
+                switch(action) {
+                    case 0: return `Call ${currentBet}`;
+                    case 1: return 'Raise';
+                    case 2: return 'JAM';
+                    case 3: return 'Fold';
+                }
+            } else {
+                // No bet: 0=check, 1=bet½, 2=bet, 3=jam
+                switch(action) {
+                    case 0: return 'Check';
+                    case 1: return `Bet ${Math.max(1, Math.floor(pot/2))}`;
+                    case 2: return `Bet ${pot}`;
+                    case 3: return 'JAM';
+                }
+            }
+        }
+        
+        function getActionClass(action, facingBet) {
+            if (facingBet) {
+                switch(action) {
+                    case 0: return 'call';
+                    case 1: return 'raise';
+                    case 2: return 'jam';
+                    case 3: return 'fold';
+                }
+            } else {
+                switch(action) {
+                    case 0: return 'check';
+                    case 1: return 'bet';
+                    case 2: return 'bet';
+                    case 3: return 'jam';
+                }
+            }
+        }
+        
+        function updateUI(state) {
+            document.getElementById('street').textContent = state.street;
+            document.getElementById('pot').textContent = state.pot;
+            document.getElementById('bet').textContent = state.current_bet;
+            document.getElementById('dealer').textContent = state.dealer;
+            document.getElementById('player-stack').textContent = state.player_stack;
+            document.getElementById('bot-stack').textContent = state.bot_stack;
+            
+            renderCards('player-hand', state.player_hand);
+            renderCards('bot-hand', state.bot_hand);
+            renderCards('board1', state.board1);
+            renderCards('board2', state.board2);
+            
+            // Turn indicator
+            const turnEl = document.getElementById('turn');
+            if (state.game_over) {
+                turnEl.textContent = 'Game Over';
+            } else if (state.action_on === 'player') {
+                turnEl.textContent = 'Your turn';
+            } else {
+                turnEl.textContent = "Bot's turn";
+            }
+            
+            // Actions
+            const actionsEl = document.getElementById('actions');
+            actionsEl.innerHTML = '';
+            
+            if (!state.game_over && state.action_on === 'player') {
+                state.legal_actions.forEach(action => {
+                    const btn = document.createElement('button');
+                    btn.className = 'action-btn ' + getActionClass(action, state.facing_bet);
+                    btn.textContent = getActionLabel(action, state.facing_bet, state.pot, state.current_bet);
+                    btn.onclick = () => doAction(action);
+                    actionsEl.appendChild(btn);
+                });
+            }
+            
+            // Message
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = state.message || '-';
+            msgEl.className = 'message';
+            if (state.game_over) {
+                if (state.winner === 'player') msgEl.classList.add('winner');
+                else if (state.winner === 'bot') msgEl.classList.add('loser');
+            }
+        }
+        
+        async function newGame() {
+            const strategy = document.getElementById('strategy').value;
+            const res = await fetch('/api/new_game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ strategy })
+            });
+            const state = await res.json();
+            updateUI(state);
+        }
+        
+        async function doAction(action) {
+            const res = await fetch('/api/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const state = await res.json();
+            if (state.error) {
+                alert(state.error);
+                return;
+            }
+            updateUI(state);
+        }
+    </script>
+</body>
+</html>
