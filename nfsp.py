@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-NFSP for Double Board Omaha - SIMPLIFIED VERSION
 
-Key fixes:
-1. Pretraining = pure RL (DQN), NOT NFSP mixed mode
-2. Q-targets mask illegal actions (no fantasy backups)
-3. Simple rewards during pretrain (no pot-weighting)
-4. SL training only happens in self-play phase
+NFSP for Double Board Pot Limit Omaha
 
-SIMPLIFICATIONS:
-- No river betting (FLOP + TURN only, then showdown)
-- No jam actions (pot-limit only)
-- Smaller action space for faster learning
+Hi TAs! This is our implementation of NFSP for Double Board Pot Limit Omaha.
 
+It uses a simplified action space and reward function for faster learning.
+
+For the game, it follows a mandatory 2 bb initial bet, then pot limit betting rounds
+up to the turn and no betting on the river.
+
+To train the model, we do pretraining with pure RL (DQN) against a rule-based linear player.
+Following that, we do self-play training with NFSP mixed mode for a fewer number of iterations.
 Action Space (context-dependent):
   When NOT facing a bet: 0=check, 1=bet½, 2=bet pot
   When FACING a bet: 0=call, 1=raise pot, 3=fold
