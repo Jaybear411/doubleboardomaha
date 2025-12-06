@@ -14,8 +14,8 @@ To train the model, we do pretraining with pure RL (DQN) against a rule-based li
 Following that, we do self-play training with NFSP mixed mode for a fewer number of iterations.
 
 Action Space:
-  When NOT facing a bet options are - 0=check, 1=bet½, 2=bet pot
-  When FACING a bet options are - 0=call, 1=raise pot, 3=fold
+  When NOT facing a bet options are - 0 = check, 1 = bet 1/2 pot, 2 = bet pot
+  When FACING a bet options are - 0 = call, 1 = raise to the pot size, 3 = fold
 """
 
 import random
