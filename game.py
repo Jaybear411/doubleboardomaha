@@ -17,53 +17,7 @@ class PokerGame:
         self.big_blind = big_blind
         self.dealer = dealer
 
-    async def play_hand(self):
-        # Play a complete hand of db omaha
-        pot = 2 * self.big_blind
-        cards = list(range(1, 53))
-        random.shuffle(cards)
-
-        # Deal hands and boards
-        hands = self.deal_hands(cards)
-        self.log_cards("Player 1's hand:", hands[0])
-        self.log_cards("Player 2's hand:", hands[1])
-        
-        # Blinds, bombpot
-        self.stacks[0] -= self.big_blind
-        self.stacks[1] -= self.big_blind
-        
-        # Deal two flops
-        boards = self.deal_flops(cards)
-        self.log_cards("Board 1 Flop:", boards[0])
-        self.log_cards("Board 2 Flop:", boards[1])
-        
-        # Flop betting round
-        pot += await self.bet_round()
-        
-        # Deal turns
-        boards = self.deal_turns(cards, boards[0], boards[1])
-        self.log_cards("Board 1 Turn:", boards[0])
-        self.log_cards("Board 2 Turn:", boards[1])
-        
-        # Turn betting round
-        pot += await self.bet_round()
-        
-        # Deal rivers
-        boards = self.deal_rivers(cards, boards[0], boards[1])
-        self.log_cards("Board 1 River:", boards[0])
-        self.log_cards("Board 2 River:", boards[1])
-        
-        # River betting round
-        pot += await self.bet_round()
-        
-        # Showdown
-        winnings_player1, winnings_player2 = self.showdown(hands, boards, self.log_cards)
-        
-        # Pay out
-        self.stacks = self.pay_out(winnings_player1, winnings_player2, pot)
-        print(f"\nStacks: Player 1: {self.stacks[0]} Player 2: {self.stacks[1]}")
-        
-        return winnings_player1, winnings_player2
+    
 
     def log_cards(self, message, cards):
         # Display cards with suits
@@ -80,8 +34,7 @@ class PokerGame:
         print(f"{message} {' '.join(card_strings)}")
     
     async def runBettingRound(self, hand, boards, player_stack, opponent_stack, pot, dealer):
-        # Run a complete betting round.
-        # Returns (player_stack, opponent_stack, pot, folded_player)
+        # return: (player_stack, opponent_stack, pot, folded_player)
         #folded_player, None if no fold, 1 if player1 folded, 2 if player2 folded
 
         current_bet = 0  # Amount needed to call
@@ -200,7 +153,7 @@ class PokerGame:
             
             # Check if either player is all-in
             if player_stack == 0 or opponent_stack == 0:
-                # Match any remaining investment if needed
+                # Match any remaining bet if needed
                 if player_invested < opponent_invested and player_stack == 0:
                     # Player 1 is all-in but has less invested
                     excess = opponent_invested - player_invested
@@ -219,45 +172,10 @@ class PokerGame:
 
 
     async def playerOneDecision(self, hand, boards, player_stack, opponent_stack, pot, dealer, current_bet, player_invested):
-        # Returns 0 (check), positive number (bet/raise amount), 2 (call), or 3 (fold)
+        # return: 0 (check), positive number (bet/raise amount), 2 (call), or 3 (fold)
         amount_to_call = current_bet - player_invested
         
-        # Determine allowed decisions based on game state
-        if amount_to_call == 0:
-            # No bet to call - can check or bet
-            allowed_decisions = [0, 1]  # check, bet pot
-        else:
-            # There's a bet to call - can call, fold, or raise
-            allowed_decisions = [2, 3, 1]  # call, fold, raise
-        
-        decision = await self.makeDecision(hand, boards, player_stack, opponent_stack, dealer, allowed_decisions)
-        
-        # If there's no bet to call
-        if amount_to_call == 0:
-            if decision == 0:  # Check
-                return 0
-            elif decision == 1:  # Bet pot
-                bet_size = min(pot, player_stack, opponent_stack)
-                return bet_size
-        else:
-            # There's a bet to call
-            if decision == 2:  # Call
-                return 2
-            elif decision == 3:  # Fold
-                return 3
-            elif decision == 1:  # Raise (interpret as pot-sized raise)
-                # Raise to pot size
-                raise_to = min(pot + amount_to_call, player_stack)
-                return raise_to
-        
-        return 0  # Default to check
-
-
-    async def playerTwoDecision(self, hand, boards, player_stack, opponent_stack, pot, dealer, current_bet, opponent_invested, player_invested):
-        # Returns, 0 (check), positive number (bet/raise amount), 2 (call), or 3 (fold)
-        amount_to_call = current_bet - opponent_invested
-        
-        # Determine allowed decisions based on game state
+        # Allowed decisions based on game state
         if amount_to_call == 0:
             # No bet to call, can check or bet
             allowed_decisions = [0, 1]  # check, bet pot
@@ -265,8 +183,43 @@ class PokerGame:
             # There's a bet to call, can call, fold, or raise
             allowed_decisions = [2, 3, 1]  # call, fold, raise
         
+        decision = await self.makeDecision(hand, boards, player_stack, opponent_stack, dealer, allowed_decisions)
+        
+        # No bet to call
+        if amount_to_call == 0:
+            if decision == 0:  # Check
+                return 0
+            elif decision == 1:  # Bet pot
+                bet_size = min(pot, player_stack, opponent_stack)
+                return bet_size
+        else:
+            # Bet to call
+            if decision == 2:  # Call
+                return 2
+            elif decision == 3:  # Fold
+                return 3
+            elif decision == 1:  # Raise pot
+                raise_to = min(pot + amount_to_call, player_stack)
+                return raise_to
+        
+        return 0  # Default to check
+
+
+    async def playerTwoDecision(self, hand, boards, player_stack, opponent_stack, pot, dealer, current_bet, opponent_invested, player_invested):
+        # return: 0 (check), positive number (bet/raise amount), 2 (call), or 3 (fold)
+        amount_to_call = current_bet - opponent_invested
+        
+        # Determine allowed decisions based on game state
+        if amount_to_call == 0:
+            # No bet to call, can check or bet
+            allowed_decisions = [0, 1]  # check, bet pot
+        else:
+            # Bet to call, can call, fold, or raise
+            allowed_decisions = [2, 3, 1]  # call, fold, raise
+        
         decision = await self.makeDecision(hand, boards, player_stack, opponent_stack, dealer, allowed_decisions, player_invested)
         
+        # No bet to call
         if amount_to_call == 0:
             if decision == 0:  # Check
                 return 0
@@ -274,6 +227,7 @@ class PokerGame:
                 bet_size = min(pot, opponent_stack, player_stack)
                 return bet_size
         else:
+            # Bet to call
             if decision == 2:  # Call
                 return 2
             elif decision == 3:  # Fold
@@ -285,7 +239,7 @@ class PokerGame:
         return 0
         
     async def bet_round(self):
-        # Handle a betting round (simplified check/bet/call)
+        # Handle a betting round check/bet/call
         if self.stacks[0] == 0 or self.stacks[1] == 0:
             return 0
         
@@ -502,31 +456,3 @@ class PokerGame:
             log_cards("", cards_b2_p2)
         
         return winnings_player1, winnings_player2
-
-async def main():
-    """Run a poker game"""
-    stacks = [100, 100]
-    big_blind = 1
-    dealer = 0
-    
-    game = PokerGame(stacks, big_blind, dealer)
-    
-    print("Starting stacks:", game.stacks)
-    print("\n" + "="*50)
-    print("Starting Double-Board Omaha Poker Game")
-    print("="*50 + "\n")
-    
-    try:
-        result = await game.play_hand()
-        print("\n" + "="*50)
-        print(f"Game Result: Player 1 won {result[0]*100}% of pot, Player 2 won {result[1]*100}% of pot")
-        print(f"Ending stacks: Player 1: {game.stacks[0]}, Player 2: {game.stacks[1]}")
-        print("="*50)
-    except Exception as e:
-        print(f"Error running game: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

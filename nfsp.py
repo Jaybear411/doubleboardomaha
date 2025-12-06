@@ -26,10 +26,6 @@ import torch.nn.functional as F
 from collections import deque
 from game import PokerGame
 
-# =============================================================================
-# ACTION HANDLING
-# =============================================================================
-
 def get_legal_actions(bet_to_call, hero_stack, villain_stack, pot):
     """
     Returns list of legal action indices.
@@ -85,18 +81,13 @@ def apply_action(action, bet_to_call, hero_stack, villain_stack, pot):
 
 
 def action_name(action, facing_bet):
-    """Human-readable action name."""
+    #for logging
     if facing_bet:
         return {0: 'call', 1: 'raise', 3: 'fold'}[action]
     return {0: 'check', 1: 'bet½', 2: 'bet'}[action]
 
-
-# =============================================================================
-# STATE ENCODING
-# =============================================================================
-
 def encode_state(hand, boards, pot, stacks, position, street, bet_to_call):
-    """Encode state (185 features)."""
+    #Encode state (185 features).
     features = []
     
     # Hand cards (52)
@@ -150,10 +141,6 @@ def encode_state(hand, boards, pot, stacks, position, street, bet_to_call):
 STATE_DIM = 185
 
 
-# =============================================================================
-# NETWORKS
-# =============================================================================
-
 class QNetwork(nn.Module):
     def __init__(self, state_dim=STATE_DIM, num_actions=4, hidden_dim=512):
         super().__init__()
@@ -187,10 +174,6 @@ class PolicyNetwork(nn.Module):
         x = self.dropout2(x)
         return self.fc3(x)
 
-
-# =============================================================================
-# REPLAY BUFFERS
-# =============================================================================
 
 class RLReplayBuffer:
     """RL buffer stores: (state, action, reward, next_state, done, next_legal_mask)"""
@@ -234,10 +217,6 @@ class SLReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
-
-# =============================================================================
-# NFSP AGENT
-# =============================================================================
 
 class NFSPAgent:
     def __init__(self, state_dim=STATE_DIM, num_actions=4, lr_rl=0.001, lr_sl=0.001,
@@ -362,10 +341,6 @@ class NFSPAgent:
         return loss.item()
 
 
-# =============================================================================
-# LINEAR PLAYER
-# =============================================================================
-
 class LinearPlayer:
     """Rule-based: bet/raise with 2 pair+, otherwise check/fold."""
     def __init__(self):
@@ -395,15 +370,9 @@ class LinearPlayer:
             return 0  # check
 
 
-# =============================================================================
-# TRAINER
-# =============================================================================
-
 class NFSPTrainer:
-    """
-    Phase 1: Pure DQN vs Linear (no NFSP mixing, no pot-weighting)
-    Phase 2: NFSP self-play (mixed mode, SL training)
-    """
+    # Phase 1: Pure DQN pretrain vs linear strat
+    # Phase 2: NFSP self-play (mixed mode, SL training)
     def __init__(self, pretrain_iterations=100000, selfplay_iterations=20000):
         self.pretrain_iterations = pretrain_iterations
         self.selfplay_iterations = selfplay_iterations
@@ -779,9 +748,7 @@ def main():
         pretrain = 100000
         selfplay = 20000
     
-    print("\n" + "=" * 70)
     print("NFSP TRAINING - SIMPLIFIED VERSION")
-    print("=" * 70)
     print(f"  Phase 1 (Pure RL vs Linear): {pretrain:,} iterations")
     print(f"  Phase 2 (NFSP Self-play): {selfplay:,} iterations")
     print(f"\n  Simplifications:")
@@ -792,7 +759,6 @@ def main():
     print(f"    ✓ Pure RL pretrain (no NFSP mixing)")
     print(f"    ✓ Q-targets mask illegal actions")
     print(f"    ✓ Simple rewards (no pot-weighting)")
-    print("=" * 70 + "\n")
     
     trainer = NFSPTrainer(pretrain_iterations=pretrain, selfplay_iterations=selfplay)
     asyncio.run(trainer.train())
