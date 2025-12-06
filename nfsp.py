@@ -12,9 +12,10 @@ up to the turn and no betting on the river.
 
 To train the model, we do pretraining with pure RL (DQN) against a rule-based linear player.
 Following that, we do self-play training with NFSP mixed mode for a fewer number of iterations.
-Action Space (context-dependent):
-  When NOT facing a bet: 0=check, 1=bet½, 2=bet pot
-  When FACING a bet: 0=call, 1=raise pot, 3=fold
+
+Action Space:
+  When NOT facing a bet options are - 0=check, 1=bet½, 2=bet pot
+  When FACING a bet options are - 0=call, 1=raise pot, 3=fold
 """
 
 import random
@@ -27,30 +28,28 @@ from game import PokerGame
 
 def get_legal_actions(bet_to_call, hero_stack, villain_stack, pot):
     """
-    Returns list of legal action indices.
-    SIMPLIFIED: No jam actions, pot-limit only.
+    Returns list of legal action indices
     """
     if bet_to_call > 0:
-        # Facing bet: 0=call, 1=raise pot, 3=fold (NO JAM)
-        legal = [0, 3]  # Always can call or fold
+        # 0 = call, 1 = raise pot, 3 = fold - no jamming allowed
+        legal = [0, 3]
         
-        # Can raise if we have enough chips beyond the call
         if hero_stack > bet_to_call:
             pot_raise = bet_to_call + pot
             if hero_stack >= pot_raise:
-                legal.append(1)  # raise pot
+                legal.append(1)  # raise pot size
             
         return sorted(legal)
     else:
-        # No bet: 0=check, 1=bet½, 2=bet pot (NO JAM)
+        # options when there is no bet from da villain - 0=check, 1=bet½, 2=bet pot
         legal = [0]
         if hero_stack > 0:
-            legal.extend([1, 2])  # Only bet½ and bet pot, no jam
+            legal.extend([1, 2])  # Only bet 1/2 pot and bet pot, no jam allowed
         return sorted(legal)
 
 
 def legal_to_mask(legal_actions, num_actions=4):
-    """Convert legal action list to binary mask tensor."""
+    """legal actions become a binary mask tensor"""
     mask = np.zeros(num_actions, dtype=np.float32)
     for a in legal_actions:
         mask[a] = 1.0
@@ -59,20 +58,19 @@ def legal_to_mask(legal_actions, num_actions=4):
 
 def apply_action(action, bet_to_call, hero_stack, villain_stack, pot):
     """
-    Convert semantic action to (bet_amount, is_fold).
-    SIMPLIFIED: No jam, pot-limit only.
+    Convert semantic action to either bet_amount or is_fold.
     """
     if bet_to_call > 0:
         if action == 0:  # call
             return min(bet_to_call, hero_stack), False
-        elif action == 1:  # raise pot
+        elif action == 1:  # raise pot size
             return min(bet_to_call + pot, hero_stack), False
         elif action == 3:  # fold
             return 0, True
     else:
         if action == 0:  # check
             return 0, False
-        elif action == 1:  # bet ½ pot
+        elif action == 1:  # bet 1/2 pot size
             return min(max(1, pot // 2), hero_stack, villain_stack), False
         elif action == 2:  # bet pot
             return min(pot, hero_stack, villain_stack), False
@@ -86,16 +84,16 @@ def action_name(action, facing_bet):
     return {0: 'check', 1: 'bet½', 2: 'bet'}[action]
 
 def encode_state(hand, boards, pot, stacks, position, street, bet_to_call):
-    #Encode state (185 features).
+    #Encode state - will be 185 features
     features = []
     
-    # Hand cards (52)
+    # Hand cards - 52
     hand_vec = np.zeros(52)
     for card in hand:
         hand_vec[card - 1] = 1
     features.extend(hand_vec)
     
-    # Board cards (104)
+    # Board cards - 104
     board_vec = np.zeros(104)
     if len(boards) > 0 and boards[0]:
         for card in boards[0]:
@@ -105,7 +103,7 @@ def encode_state(hand, boards, pot, stacks, position, street, bet_to_call):
                 board_vec[52 + card - 1] = 1
     features.extend(board_vec)
     
-    # Hand strength (20)
+    # Hand strength - 20 - added for a better holistic evaluation of the hand
     game = PokerGame([100, 100], 1, 0)
     for board_idx in range(2):
         if len(boards) > board_idx and boards[board_idx] and len(boards[board_idx]) >= 3:
@@ -114,9 +112,9 @@ def encode_state(hand, boards, pot, stacks, position, street, bet_to_call):
             vec[int(rank[0])] = 1.0
             features.extend(vec)
         else:
-            features.extend(np.zeros(10))
+            features.extend(np.zeros(10)) #doing if no board cards yet
     
-    # Game state (5)
+    # Game state - 5 features
     bb = 1.0
     features.append(pot / (100 * bb))
     features.append(stacks[0] / (100 * bb))
@@ -124,14 +122,14 @@ def encode_state(hand, boards, pot, stacks, position, street, bet_to_call):
     features.append(bet_to_call / (100 * bb))
     features.append(position)
     
-    # Street (3)
+    # Street - 3 features
     street_map = {'FLOP': 0, 'TURN': 1, 'RIVER': 2}
     street_vec = np.zeros(3)
     if street in street_map:
         street_vec[street_map[street]] = 1
     features.extend(street_vec)
     
-    # Facing bet flag (1)
+    # Facing bet flag - 1 feature
     features.append(1.0 if bet_to_call > 0 else 0.0)
     
     return np.array(features, dtype=np.float32)
@@ -141,10 +139,10 @@ STATE_DIM = 185
 
 
 class QNetwork(nn.Module):
-    def __init__(self, state_dim=STATE_DIM, num_actions=4, hidden_dim=512):
+    def __init__(self, state_dim = STATE_DIM, num_actions = 4, hidden_dim = 512):
         super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
-        self.dropout1 = nn.Dropout(0.2)
+        self.dropout1 = nn.Dropout(0.2) #added dropout to prevent overfitting - improved model a lot
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.dropout2 = nn.Dropout(0.2)
         self.fc3 = nn.Linear(hidden_dim, num_actions)
@@ -175,8 +173,8 @@ class PolicyNetwork(nn.Module):
 
 
 class RLReplayBuffer:
-    """RL buffer stores: (state, action, reward, next_state, done, next_legal_mask)"""
-    def __init__(self, capacity=200000):
+    """RL buffer stores the following state, action, reward, next_state, done, next_legal_mask"""
+    def __init__(self, capacity=200000): #increased buffer (can reduce in the future if needed)
         self.buffer = deque(maxlen=capacity)
     
     def add(self, state, action, reward, next_state, done, next_legal_mask):
@@ -199,7 +197,7 @@ class RLReplayBuffer:
 
 
 class SLReplayBuffer:
-    def __init__(self, capacity=500000):
+    def __init__(self, capacity=500000): #never hits this limit in the current num training iterations but in case its large
         self.buffer = deque(maxlen=capacity)
     
     def add(self, state, action):
@@ -220,7 +218,7 @@ class SLReplayBuffer:
 class NFSPAgent:
     def __init__(self, state_dim=STATE_DIM, num_actions=4, lr_rl=0.001, lr_sl=0.001,
                  gamma=0.99, eta=0.1, epsilon=0.1, target_update_freq=500,
-                 reward_clip=5.0, device='cpu'):
+                 reward_clip=5.0, device='cpu'): #dont change these values - tweaked to be good
         self.num_actions = num_actions
         self.gamma = gamma
         self.eta = eta
@@ -231,11 +229,11 @@ class NFSPAgent:
         self.q_network = QNetwork(state_dim, num_actions).to(device)
         self.q_target = QNetwork(state_dim, num_actions).to(device)
         self.q_target.load_state_dict(self.q_network.state_dict())
-        # Adam with L2 regularization (weight_decay)
+        # Adam with L2 regularization
         self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=lr_rl, weight_decay=1e-5)
         
         self.policy_network = PolicyNetwork(state_dim, num_actions).to(device)
-        # Adam with L2 regularization (weight_decay)
+        # Adam with L2 regularization
         self.policy_optimizer = torch.optim.Adam(self.policy_network.parameters(), lr=lr_sl, weight_decay=1e-5)
         
         self.rl_buffer = RLReplayBuffer()
@@ -245,7 +243,7 @@ class NFSPAgent:
         self.target_update_freq = target_update_freq
         
     def select_action(self, state, legal_actions, mode='mixed'):
-        """Select action. mode='rl' for pure RL, 'sl' for pure SL, 'mixed' for NFSP."""
+        """Select action. mode='rl' for pure RL, 'sl' for pure SL, 'mixed' for NFSP"""
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         
         if mode == 'rl':
@@ -257,7 +255,7 @@ class NFSPAgent:
         
         with torch.no_grad():
             if use_rl:
-                # Epsilon-greedy on Q-values
+                #epsilon greedy on Qvalues
                 if random.random() < self.epsilon:
                     action = random.choice(legal_actions)
                 else:
@@ -269,7 +267,7 @@ class NFSPAgent:
                     action = masked_q.argmax().item()
                 return action, use_rl
             else:
-                # Sample from policy network
+                # sample from policy network
                 logits = self.policy_network(state_tensor)[0]
                 masked_logits = logits.clone()
                 for a in range(self.num_actions):
@@ -280,7 +278,7 @@ class NFSPAgent:
                 return action, use_rl
     
     def train_rl(self, batch_size=128):
-        """Train Q-network with PROPER legal action masking on targets."""
+        """Train Q network with proper legal action masking on targets"""
         if len(self.rl_buffer) < batch_size:
             return 0.0
         
@@ -292,18 +290,18 @@ class NFSPAgent:
         dones = dones.to(self.device)
         next_legal_masks = next_legal_masks.to(self.device)
         
-        # Current Q-values
+        # cur q values
         q_values = self.q_network(states)
         q_sa = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
         
-        # Target Q-values WITH LEGAL ACTION MASKING
+        # target q values with legal action masking
         with torch.no_grad():
             q_next_all = self.q_target(next_states)
-            # Mask illegal actions: set to -inf so they're never selected
+            # Mask illegal actions - set to -inf so they're never selected
             illegal_mask = (next_legal_masks == 0)
             q_next_all[illegal_mask] = -float('inf')
             q_next = q_next_all.max(1)[0]
-            # Handle case where all actions are illegal (terminal state)
+            # handle case where all actions are illegal - terminal state
             q_next = torch.where(torch.isinf(q_next), torch.zeros_like(q_next), q_next)
             target = rewards + self.gamma * (1 - dones) * q_next
         
@@ -321,7 +319,7 @@ class NFSPAgent:
         return loss.item()
     
     def train_sl(self, batch_size=128):
-        """Train policy network (supervised learning on RL actions)."""
+        """Train policy network - supervised learning on RL actions"""
         if len(self.sl_buffer) < batch_size:
             return 0.0
         
@@ -330,18 +328,22 @@ class NFSPAgent:
         actions = actions.to(self.device)
         
         logits = self.policy_network(states)
+
         loss = F.cross_entropy(logits, actions)
         
         self.policy_optimizer.zero_grad()
+
         loss.backward()
+
         torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 10.0)
+
         self.policy_optimizer.step()
         
         return loss.item()
 
 
 class LinearPlayer:
-    """Rule-based: bet/raise with 2 pair+, otherwise check/fold."""
+    """Rule-based - bet/raise with 2 pair+, otherwise check/fold - good player in practice"""
     def __init__(self):
         self.game = PokerGame([100, 100], 1, 0)
     
@@ -355,12 +357,12 @@ class LinearPlayer:
                 rank2, _ = self.game.omaha_hand_strength(hand, boards[1])
                 best_rank = max(best_rank, rank2[0])
         
-        has_strong = best_rank >= 2  # Two pair or better
+        has_strong = best_rank >= 2  # two pair or better - good hands
         
         if bet_to_call > 0:
             if has_strong:
                 if 1 in legal_actions and random.random() < 0.4:
-                    return 1  # raise pot
+                    return 1  # raise pot size
                 return 0  # call
             return 3  # fold
         else:
@@ -370,12 +372,12 @@ class LinearPlayer:
 
 
 class NFSPTrainer:
-    # Phase 1: Pure DQN pretrain vs linear strat
-    # Phase 2: NFSP self-play (mixed mode, SL training)
+    # Phase 1 - Pure DQN pretrain vs linear strat
+    # Phase 2 - NFSP self-play - mixed mode, SL training
     def __init__(self, pretrain_iterations=100000, selfplay_iterations=20000):
         self.pretrain_iterations = pretrain_iterations
         self.selfplay_iterations = selfplay_iterations
-        # Lower LR for more stable learning, higher exploration, dropout + L2 reg
+        # Lower Learning rate for more stable learning, higher exploration, dropout + L2 reg
         self.agent_p1 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005, epsilon=0.2)
         self.agent_p2 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005)
         self.linear = LinearPlayer()
@@ -387,7 +389,7 @@ class NFSPTrainer:
     async def play_hand_vs_linear(self, agent, agent_pos, stacks, bb, dealer):
         """
         Play agent vs linear. 
-        PURE RL mode, SIMPLE reward (chip delta only, no pot-weighting).
+        pure RL mode, simple reward - chip delta only, no pot-weighting
         """
         game = PokerGame(stacks[:], bb, dealer)
         
@@ -400,10 +402,10 @@ class NFSPTrainer:
         game.stacks[0] -= bb
         game.stacks[1] -= bb
         
-        # trajectory: list of (state, action, legal_mask)
+        # trajectory - list of state, action, legal_mask
         trajectory = []
         
-        # SIMPLIFIED: Only FLOP and TURN, no river betting
+        # flop and turn
         for street_idx, street_name in enumerate(['FLOP', 'TURN']):
             if street_idx == 1:
                 boards = game.deal_turns(cards, boards[0], boards[1])
@@ -429,7 +431,7 @@ class NFSPTrainer:
                         [hero_stack, villain_stack],
                         actor, street_name, current_bet
                     )
-                    # PURE RL during pretrain
+                    # pure RL during pretrain
                     action, _ = agent.select_action(state, legal, mode='rl')
                     trajectory.append((state, action, legal_mask))
                 else:
@@ -440,7 +442,7 @@ class NFSPTrainer:
                 if is_fold:
                     winner = 1 - actor
                     game.stacks[winner] += pot
-                    # SIMPLE REWARD: just chip delta
+                    # chip delta reward is the best out of what we tried
                     reward = (game.stacks[agent_pos] - stacks[agent_pos]) / bb
                     self._finalize_trajectory(agent, trajectory, reward, legal_mask)
                     return reward
@@ -461,7 +463,7 @@ class NFSPTrainer:
                     if action_num > 0 and current_bet == 0:
                         break
         
-        # Showdown
+        # showdown
         best_b1_p1, _ = game.omaha_hand_strength(hands[0], boards[0])
         best_b2_p1, _ = game.omaha_hand_strength(hands[0], boards[1])
         best_b1_p2, _ = game.omaha_hand_strength(hands[1], boards[0])
@@ -478,17 +480,16 @@ class NFSPTrainer:
         
         game.stacks[0] += int(w1 * pot)
         game.stacks[1] += int(w2 * pot)
-        
-        # SIMPLE REWARD
+    
         reward = (game.stacks[agent_pos] - stacks[agent_pos]) / bb
         
-        # Terminal state mask (all zeros - no next actions)
+        # Terminal state mask - all zeros, no next actions
         terminal_mask = np.zeros(4, dtype=np.float32)
         self._finalize_trajectory(agent, trajectory, reward, terminal_mask)
         return reward
     
     def _finalize_trajectory(self, agent, trajectory, reward, final_mask):
-        """Add trajectory to RL buffer only (no SL during pretrain)."""
+        """Add trajectory to RL buffer only - no SL during pretrain."""
         reward_clipped = np.clip(reward, -agent.reward_clip, agent.reward_clip)
         
         for i, (state, action, legal_mask) in enumerate(trajectory):
@@ -506,7 +507,7 @@ class NFSPTrainer:
             agent.rl_buffer.add(state, action, r, next_state, done, next_legal)
     
     async def play_hand_selfplay(self, stacks, bb, dealer):
-        """Self-play with NFSP (mixed mode, adds to SL buffer)."""
+        """Self-play with NFSP - mixed mode, adds to SL buffer"""
         game = PokerGame(stacks[:], bb, dealer)
         
         cards = list(range(1, 53))
@@ -520,7 +521,7 @@ class NFSPTrainer:
         
         traj_p1, traj_p2 = [], []
         
-        # SIMPLIFIED: Only FLOP and TURN, no river betting
+        # Flop and turn
         for street_idx, street_name in enumerate(['FLOP', 'TURN']):
             if street_idx == 1:
                 boards = game.deal_turns(cards, boards[0], boards[1])
@@ -607,7 +608,7 @@ class NFSPTrainer:
         return r1, r2
     
     def _finalize_selfplay(self, traj_p1, traj_p2, r1, r2, terminal_mask):
-        """Add trajectories to both RL and SL buffers."""
+        """Add trajectories to both RL and SL buffers"""
         r1_clip = np.clip(r1, -self.agent_p1.reward_clip, self.agent_p1.reward_clip)
         r2_clip = np.clip(r2, -self.agent_p2.reward_clip, self.agent_p2.reward_clip)
         
@@ -626,19 +627,14 @@ class NFSPTrainer:
                 
                 agent.rl_buffer.add(state, action, r, next_state, done, next_legal)
                 
-                # NFSP: only add to SL buffer when using RL policy
+                # NFSP, only add to SL buffer when using RL policy
                 if used_rl:
                     agent.sl_buffer.add(state, action)
     
     async def pretrain_vs_linear(self):
-        """Phase 1: Pure DQN best response to linear."""
-        print("=" * 70)
-        print("PHASE 1: PURE RL (DQN) VS LINEAR")
-        print("=" * 70)
+        """Phase 1 -pure DQN best response to linear."""
+        print("phase 1 - DQN vs Linear")
         print(f"Iterations: {self.pretrain_iterations:,}")
-        print("Mode: Pure RL (no NFSP mixing)")
-        print("Reward: Simple chip delta (no pot-weighting)")
-        print("Training: Q-network only (no SL)\n")
         
         rewards = []
         
@@ -655,7 +651,7 @@ class NFSPTrainer:
                 loss_rl = self.agent_p1.train_rl(batch_size=128)
                 self.rl_losses.append(loss_rl)
             
-            # Anneal epsilon: 0.15 -> 0.05 over training
+            # epsilon - 0.15 -> 0.05 over training
             if i % 10000 == 0:
                 new_eps = max(0.05, self.agent_p1.epsilon - 0.01)
                 self.agent_p1.epsilon = new_eps
@@ -663,31 +659,26 @@ class NFSPTrainer:
             if i % 1000 == 0:
                 avg_rl = np.mean(self.rl_losses[-250:]) if self.rl_losses else 0
                 avg_r = np.mean(rewards[-500:])
-                print(f"[Pretrain] {i:>6,}/{self.pretrain_iterations:,} | "
+                print(f"Pretraining iterations {i:>6,}/{self.pretrain_iterations:,} | "
                       f"RL_loss: {avg_rl:.4f} | Reward: {avg_r:+.2f} | "
-                      f"eps: {self.agent_p1.epsilon:.2f} | "
                       f"RL_buf: {len(self.agent_p1.rl_buffer):,}")
         
         final_r = np.mean(rewards[-1000:]) if len(rewards) >= 1000 else np.mean(rewards)
-        print(f"\nPRETRAIN COMPLETE: Avg reward = {final_r:+.3f} bb/hand\n")
+        print(f"\npretraining done - avg reward = {final_r:+.3f} bb/hand\n")
         
         return final_r
     
     async def train_selfplay(self):
         """Phase 2: NFSP self-play."""
-        print("=" * 70)
-        print("PHASE 2: NFSP SELF-PLAY")
-        print("=" * 70)
+        print("Phase 2 - NFSP self-play mixed strat")
         print(f"Iterations: {self.selfplay_iterations:,}")
-        print("Mode: Mixed (NFSP)")
-        print("Training: Q-network + Policy network\n")
         
-        # Copy pretrained weights to P2
+        # copy pretrained weights to P2
         self.agent_p2.q_network.load_state_dict(self.agent_p1.q_network.state_dict())
         self.agent_p2.q_target.load_state_dict(self.agent_p1.q_target.state_dict())
         self.agent_p2.policy_network.load_state_dict(self.agent_p1.policy_network.state_dict())
         
-        # Reset epsilon for self-play
+        # reset epsilon for self play
         self.agent_p1.epsilon = 0.1
         self.agent_p2.epsilon = 0.1
         
@@ -710,14 +701,14 @@ class NFSPTrainer:
             if i % 1000 == 0:
                 avg_sl = np.mean(self.sl_losses[-250:]) if self.sl_losses else 0
                 avg_r1 = np.mean(rewards_p1[-500:])
-                print(f"[Selfplay] {i:>6,}/{self.selfplay_iterations:,} | "
+                print(f"Selfplay iterations {i:>6,}/{self.selfplay_iterations:,} | "
                       f"SL_loss: {avg_sl:.4f} | P1_reward: {avg_r1:+.2f} | "
                       f"SL_buf: {len(self.agent_p1.sl_buffer):,}")
         
-        print(f"\nSELF-PLAY COMPLETE\n")
+        print(f"\nPhase 2, self play complete\n")
     
     async def train(self):
-        """Full training pipeline."""
+        """Full training pipeline"""
         if self.pretrain_iterations > 0:
             await self.pretrain_vs_linear()
         
@@ -727,10 +718,7 @@ class NFSPTrainer:
         torch.save(self.agent_p1.q_network.state_dict(), 'q_network_p1.pth')
         torch.save(self.agent_p1.policy_network.state_dict(), 'policy_network_p1.pth')
         
-        print("=" * 70)
-        print("TRAINING COMPLETE")
-        print("Saved: q_network_p1.pth, policy_network_p1.pth")
-        print("=" * 70)
+        print("training complete")
 
 
 def main():
@@ -744,20 +732,9 @@ def main():
         pretrain = int(sys.argv[1])
         selfplay = 20000
     else:
-        pretrain = 100000
-        selfplay = 20000
+        pretrain = 200000 #also optimal
+        selfplay = 20000 #optimal number of iterations for self play
     
-    print("NFSP TRAINING - SIMPLIFIED VERSION")
-    print(f"  Phase 1 (Pure RL vs Linear): {pretrain:,} iterations")
-    print(f"  Phase 2 (NFSP Self-play): {selfplay:,} iterations")
-    print(f"\n  Simplifications:")
-    print(f"    ✓ No river betting (FLOP + TURN only)")
-    print(f"    ✓ No jam actions (pot-limit only)")
-    print(f"    ✓ Smaller action space = faster learning")
-    print(f"\n  Key fixes:")
-    print(f"    ✓ Pure RL pretrain (no NFSP mixing)")
-    print(f"    ✓ Q-targets mask illegal actions")
-    print(f"    ✓ Simple rewards (no pot-weighting)")
     
     trainer = NFSPTrainer(pretrain_iterations=pretrain, selfplay_iterations=selfplay)
     asyncio.run(trainer.train())
