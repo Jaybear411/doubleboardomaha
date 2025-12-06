@@ -205,7 +205,7 @@ async def test_vs_linear(num_hands=1000):
 
 def main():
     num_hands = 5000
-    test_vs_linear(num_hands)
+    asyncio.run(test_vs_linear(num_hands))
 
 
 if __name__ == "__main__":
