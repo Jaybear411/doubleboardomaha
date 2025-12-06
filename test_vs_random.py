@@ -28,8 +28,8 @@ class TrainedPlayer:
             )
             self.agent.q_network.eval()
             self.agent.policy_network.eval()
-            self.agent.epsilon = 0  # No exploration during testing
-            print("✓ Loaded trained model\n")
+            self.agent.epsilon = 0.05  # Small exploration during testing
+            print("✓ Loaded trained model (eps=0.05)\n")
         except FileNotFoundError:
             print("⚠ Model files not found, using random\n")
     

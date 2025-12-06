@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NFSP for Double Board Omaha with RICH ACTION SPACE
+NFSP for Double Board Omaha - SIMPLIFIED VERSION
 
 Key fixes:
 1. Pretraining = pure RL (DQN), NOT NFSP mixed mode
@@ -8,9 +8,14 @@ Key fixes:
 3. Simple rewards during pretrain (no pot-weighting)
 4. SL training only happens in self-play phase
 
+SIMPLIFICATIONS:
+- No river betting (FLOP + TURN only, then showdown)
+- No jam actions (pot-limit only)
+- Smaller action space for faster learning
+
 Action Space (context-dependent):
-  When NOT facing a bet: 0=check, 1=bet½, 2=bet, 3=jam
-  When FACING a bet: 0=call, 1=raise, 2=jam, 3=fold
+  When NOT facing a bet: 0=check, 1=bet½, 2=bet pot
+  When FACING a bet: 0=call, 1=raise pot, 3=fold
 """
 
 import random
@@ -26,24 +31,26 @@ from game import PokerGame
 # =============================================================================
 
 def get_legal_actions(bet_to_call, hero_stack, villain_stack, pot):
-    """Returns list of legal action indices."""
+    """
+    Returns list of legal action indices.
+    SIMPLIFIED: No jam actions, pot-limit only.
+    """
     if bet_to_call > 0:
-        # Facing bet: 0=call, 1=raise, 2=jam, 3=fold
+        # Facing bet: 0=call, 1=raise pot, 3=fold (NO JAM)
         legal = [0, 3]  # Always can call or fold
         
-        min_raise = bet_to_call * 2
-        if hero_stack > bet_to_call and hero_stack >= min_raise:
-            legal.append(1)  # raise
-            legal.append(2)  # jam
-        elif hero_stack > bet_to_call:
-            legal.append(2)  # jam only
+        # Can raise if we have enough chips beyond the call
+        if hero_stack > bet_to_call:
+            pot_raise = bet_to_call + pot
+            if hero_stack >= pot_raise:
+                legal.append(1)  # raise pot
             
         return sorted(legal)
     else:
-        # No bet: 0=check, 1=bet½, 2=bet, 3=jam
+        # No bet: 0=check, 1=bet½, 2=bet pot (NO JAM)
         legal = [0]
         if hero_stack > 0:
-            legal.extend([1, 2, 3])
+            legal.extend([1, 2])  # Only bet½ and bet pot, no jam
         return sorted(legal)
 
 
@@ -56,14 +63,15 @@ def legal_to_mask(legal_actions, num_actions=4):
 
 
 def apply_action(action, bet_to_call, hero_stack, villain_stack, pot):
-    """Convert semantic action to (bet_amount, is_fold)."""
+    """
+    Convert semantic action to (bet_amount, is_fold).
+    SIMPLIFIED: No jam, pot-limit only.
+    """
     if bet_to_call > 0:
         if action == 0:  # call
             return min(bet_to_call, hero_stack), False
         elif action == 1:  # raise pot
             return min(bet_to_call + pot, hero_stack), False
-        elif action == 2:  # jam
-            return hero_stack, False
         elif action == 3:  # fold
             return 0, True
     else:
@@ -73,16 +81,14 @@ def apply_action(action, bet_to_call, hero_stack, villain_stack, pot):
             return min(max(1, pot // 2), hero_stack, villain_stack), False
         elif action == 2:  # bet pot
             return min(pot, hero_stack, villain_stack), False
-        elif action == 3:  # jam
-            return min(hero_stack, villain_stack), False
     return 0, False
 
 
 def action_name(action, facing_bet):
     """Human-readable action name."""
     if facing_bet:
-        return {0: 'call', 1: 'raise', 2: 'jam', 3: 'fold'}[action]
-    return {0: 'check', 1: 'bet½', 2: 'bet', 3: 'jam'}[action]
+        return {0: 'call', 1: 'raise', 3: 'fold'}[action]
+    return {0: 'check', 1: 'bet½', 2: 'bet'}[action]
 
 
 # =============================================================================
@@ -149,28 +155,36 @@ STATE_DIM = 185
 # =============================================================================
 
 class QNetwork(nn.Module):
-    def __init__(self, state_dim=STATE_DIM, num_actions=4, hidden_dim=256):
+    def __init__(self, state_dim=STATE_DIM, num_actions=4, hidden_dim=512):
         super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
+        self.dropout1 = nn.Dropout(0.2)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.dropout2 = nn.Dropout(0.2)
         self.fc3 = nn.Linear(hidden_dim, num_actions)
         
     def forward(self, x):
         x = F.relu(self.fc1(x))
+        x = self.dropout1(x)
         x = F.relu(self.fc2(x))
+        x = self.dropout2(x)
         return self.fc3(x)
 
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, state_dim=STATE_DIM, num_actions=4, hidden_dim=256):
+    def __init__(self, state_dim=STATE_DIM, num_actions=4, hidden_dim=512):
         super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
+        self.dropout1 = nn.Dropout(0.2)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.dropout2 = nn.Dropout(0.2)
         self.fc3 = nn.Linear(hidden_dim, num_actions)
         
     def forward(self, x):
         x = F.relu(self.fc1(x))
+        x = self.dropout1(x)
         x = F.relu(self.fc2(x))
+        x = self.dropout2(x)
         return self.fc3(x)
 
 
@@ -239,10 +253,12 @@ class NFSPAgent:
         self.q_network = QNetwork(state_dim, num_actions).to(device)
         self.q_target = QNetwork(state_dim, num_actions).to(device)
         self.q_target.load_state_dict(self.q_network.state_dict())
-        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=lr_rl)
+        # Adam with L2 regularization (weight_decay)
+        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=lr_rl, weight_decay=1e-5)
         
         self.policy_network = PolicyNetwork(state_dim, num_actions).to(device)
-        self.policy_optimizer = torch.optim.Adam(self.policy_network.parameters(), lr=lr_sl)
+        # Adam with L2 regularization (weight_decay)
+        self.policy_optimizer = torch.optim.Adam(self.policy_network.parameters(), lr=lr_sl, weight_decay=1e-5)
         
         self.rl_buffer = RLReplayBuffer()
         self.sl_buffer = SLReplayBuffer()
@@ -365,22 +381,17 @@ class LinearPlayer:
                 rank2, _ = self.game.omaha_hand_strength(hand, boards[1])
                 best_rank = max(best_rank, rank2[0])
         
-        has_strong = best_rank >= 2
-        has_monster = best_rank >= 5
+        has_strong = best_rank >= 2  # Two pair or better
         
         if bet_to_call > 0:
-            if has_monster and 2 in legal_actions:
-                return 2  # jam
-            elif has_strong:
-                if 1 in legal_actions and random.random() < 0.3:
-                    return 1  # raise
+            if has_strong:
+                if 1 in legal_actions and random.random() < 0.4:
+                    return 1  # raise pot
                 return 0  # call
             return 3  # fold
         else:
-            if has_monster and 3 in legal_actions:
-                return 3  # jam
-            elif has_strong:
-                return 2 if random.random() < 0.5 else 1  # bet pot or half
+            if has_strong:
+                return 2 if random.random() < 0.6 else 1  # bet pot or half
             return 0  # check
 
 
@@ -396,8 +407,9 @@ class NFSPTrainer:
     def __init__(self, pretrain_iterations=100000, selfplay_iterations=20000):
         self.pretrain_iterations = pretrain_iterations
         self.selfplay_iterations = selfplay_iterations
-        self.agent_p1 = NFSPAgent(epsilon=0.15)  # Higher exploration for pretrain
-        self.agent_p2 = NFSPAgent()
+        # Lower LR for more stable learning, higher exploration, dropout + L2 reg
+        self.agent_p1 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005, epsilon=0.2)
+        self.agent_p2 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005)
         self.linear = LinearPlayer()
         
         self.rl_losses = []
@@ -423,11 +435,10 @@ class NFSPTrainer:
         # trajectory: list of (state, action, legal_mask)
         trajectory = []
         
-        for street_idx, street_name in enumerate(['FLOP', 'TURN', 'RIVER']):
+        # SIMPLIFIED: Only FLOP and TURN, no river betting
+        for street_idx, street_name in enumerate(['FLOP', 'TURN']):
             if street_idx == 1:
                 boards = game.deal_turns(cards, boards[0], boards[1])
-            elif street_idx == 2:
-                boards = game.deal_rivers(cards, boards[0], boards[1])
             
             first = 1 - dealer
             second = dealer
@@ -541,11 +552,10 @@ class NFSPTrainer:
         
         traj_p1, traj_p2 = [], []
         
-        for street_idx, street_name in enumerate(['FLOP', 'TURN', 'RIVER']):
+        # SIMPLIFIED: Only FLOP and TURN, no river betting
+        for street_idx, street_name in enumerate(['FLOP', 'TURN']):
             if street_idx == 1:
                 boards = game.deal_turns(cards, boards[0], boards[1])
-            elif street_idx == 2:
-                boards = game.deal_rivers(cards, boards[0], boards[1])
             
             first = 1 - dealer
             second = dealer
@@ -770,15 +780,18 @@ def main():
         selfplay = 20000
     
     print("\n" + "=" * 70)
-    print("NFSP TRAINING - FIXED VERSION")
+    print("NFSP TRAINING - SIMPLIFIED VERSION")
     print("=" * 70)
     print(f"  Phase 1 (Pure RL vs Linear): {pretrain:,} iterations")
     print(f"  Phase 2 (NFSP Self-play): {selfplay:,} iterations")
+    print(f"\n  Simplifications:")
+    print(f"    ✓ No river betting (FLOP + TURN only)")
+    print(f"    ✓ No jam actions (pot-limit only)")
+    print(f"    ✓ Smaller action space = faster learning")
     print(f"\n  Key fixes:")
-    print(f"    ✓ Pretrain = pure RL (no NFSP mixing)")
+    print(f"    ✓ Pure RL pretrain (no NFSP mixing)")
     print(f"    ✓ Q-targets mask illegal actions")
-    print(f"    ✓ Simple rewards during pretrain")
-    print(f"    ✓ SL training only in self-play")
+    print(f"    ✓ Simple rewards (no pot-weighting)")
     print("=" * 70 + "\n")
     
     trainer = NFSPTrainer(pretrain_iterations=pretrain, selfplay_iterations=selfplay)

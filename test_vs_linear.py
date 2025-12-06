@@ -25,23 +25,18 @@ class LinearPlayer:
                 rank2, _ = self.game.omaha_hand_strength(hand, boards[1])
                 best_rank = max(best_rank, rank2[0])
         
-        has_strong = best_rank >= 2
-        has_monster = best_rank >= 5
+        has_strong = best_rank >= 2  # Two pair or better
         
         if bet_to_call > 0:
-            if has_monster and 2 in legal_actions:
-                return 2  # jam
-            elif has_strong:
-                if 1 in legal_actions and random.random() < 0.3:
-                    return 1  # raise
+            if has_strong:
+                if 1 in legal_actions and random.random() < 0.4:
+                    return 1  # raise pot
                 return 0  # call
             else:
                 return 3  # fold
         else:
-            if has_monster and 3 in legal_actions:
-                return 3  # jam
-            elif has_strong:
-                if random.random() < 0.5:
+            if has_strong:
+                if random.random() < 0.6:
                     return 2  # bet pot
                 else:
                     return 1  # bet half
@@ -63,8 +58,8 @@ class TrainedPlayer:
             )
             self.agent.q_network.eval()
             self.agent.policy_network.eval()
-            self.agent.epsilon = 0  # No exploration during testing
-            print("✓ Loaded trained model\n")
+            self.agent.epsilon = 0.05  # Small exploration during testing
+            print("✓ Loaded trained model (eps=0.05)\n")
         except FileNotFoundError:
             print("⚠ Model files not found, using random\n")
     
@@ -173,9 +168,10 @@ async def play_hand(trained, linear, trained_pos=0):
 
 async def test_vs_linear(num_hands=1000):
     print("=" * 60)
-    print("TESTING: Trained Model vs Linear Player")
+    print("TESTING: Trained Model vs Linear Player (SIMPLIFIED)")
     print("=" * 60)
-    print("Linear: bet/raise with 2pair+, check/fold otherwise")
+    print("Linear: bet/raise with 2 pair+, check/fold otherwise")
+    print("Game: FLOP + TURN only (no river), pot-limit")
     print("=" * 60 + "\n")
     
     trained = TrainedPlayer()
