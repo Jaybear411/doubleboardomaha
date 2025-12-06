@@ -378,7 +378,7 @@ class NFSPTrainer:
         self.pretrain_iterations = pretrain_iterations
         self.selfplay_iterations = selfplay_iterations
         # Lower Learning rate for more stable learning, higher exploration, dropout + L2 reg
-        self.agent_p1 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005, epsilon=0.2)
+        self.agent_p1 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005, epsilon=0.1)
         self.agent_p2 = NFSPAgent(lr_rl=0.0003, lr_sl=0.0005)
         self.linear = LinearPlayer()
         
