@@ -4,7 +4,7 @@ import asyncio
 
 '''
 
-Wierd rules:
+Wierd (simplified) rules:
  - You can only bet pot, check, call, or fold
  - There are only 2 betting rounds per hand (1st player either checks or bets pot, second player checks, calls, folds, or bets pot)
 '''
@@ -20,7 +20,7 @@ class PokerGame:
     
 
     def log_cards(self, message, cards):
-        # Display cards with suits
+        # display cards with suits
         suit_emojis = ['♠️', '♥️', '♦️', '♣️']
         
         def card_str(card):
@@ -41,20 +41,20 @@ class PokerGame:
         player_invested = 0  # Amount player has put in this round
         opponent_invested = 0  # Amount opponent has put in this round
         
-        # Determine who acts first (dealer acts second)    
+        # determine who acts first (dealer acts second)    
         if dealer == 1:
-            # Player 2 is dealer, so Player 1 acts first
+            # player 2 is dealer, so player 1 acts first
             first_player = 1
         else:
-            # Player 1 is dealer, so Player 2 acts first
+            # player 1 is dealer, so player 2 acts first
             first_player = 2
         
         action_on = first_player
-        last_aggressor = None  # Track who made the last raise/bet
+        last_aggressor = None  # track who made the last raise/bet
         
         while True:
             if action_on == 1:
-                # Player 1's turn
+                # player 1's turn
                 decision = await self.playerOneDecision(
                     hand, boards, player_stack, opponent_stack, 
                     pot, dealer, current_bet, player_invested
@@ -62,20 +62,20 @@ class PokerGame:
                 
                 if decision == 0:  # Check
                     if current_bet > 0:
-                        # Can't check if there's a bet to call
+                        # can't check if there's a bet to call
                         raise ValueError("Cannot check when there's a bet")
                     # Action moves to opponent
                     action_on = 2
                     
-                elif isinstance(decision, (int, float)) and decision > 0:  # Bet/Raise
+                elif isinstance(decision, (int, float)) and decision > 0:  # bet/raise
                     bet_amount = decision
                     
-                    # Ensure bet doesn't exceed stack
+                    # ensure bet doesn't exceed stack
                     bet_amount = min(bet_amount, player_stack)
                     
-                    # If there's already a bet, this is a raise
+                    # if there's already a bet, this is a raise
                     if current_bet > 0:
-                        # Raise must be at least the current bet
+                        # raise must be at least the current bet
                         additional = bet_amount - (current_bet - player_invested)
                         if additional <= 0:
                             raise ValueError("Raise must be higher than current bet")
@@ -83,11 +83,11 @@ class PokerGame:
                     player_stack -= bet_amount
                     player_invested += bet_amount
                     pot += bet_amount
-                    current_bet = player_invested  # New amount to call
+                    current_bet = player_invested  # new amount to call
                     last_aggressor = 1
                     action_on = 2
                     
-                elif decision == 2:  # Call
+                elif decision == 2:  # call
                     call_amount = current_bet - player_invested
                     call_amount = min(call_amount, player_stack)
                     
@@ -95,17 +95,17 @@ class PokerGame:
                     player_invested += call_amount
                     pot += call_amount
                     
-                    # If both players have invested equally, round is over
+                    # if both players have invested equally, round is over
                     if player_invested == opponent_invested:
                         break
                         
                     action_on = 2
                     
-                elif decision == 3:  # Fold
+                elif decision == 3:  # fold
                     return player_stack, opponent_stack, pot, 1  # Player 1 folded
                     
             else:  # action_on == 2
-                # Player 2's turn
+                # player 2's turn
                 decision = await self.playerTwoDecision(
                     hand, boards, player_stack, opponent_stack,
                     pot, dealer, current_bet, opponent_invested, player_invested
@@ -119,7 +119,7 @@ class PokerGame:
                         break
                     action_on = 1
                     
-                elif isinstance(decision, (int, float)) and decision > 0:  # Bet/Raise
+                elif isinstance(decision, (int, float)) and decision > 0:  # bet/raise
                     bet_amount = decision
                     bet_amount = min(bet_amount, opponent_stack)
                     
@@ -151,7 +151,7 @@ class PokerGame:
                 elif decision == 3:  # Fold
                     return player_stack, opponent_stack, pot, 2  # Player 2 folded
             
-            # Check if either player is all-in
+            # if either player is all-in
             if player_stack == 0 or opponent_stack == 0:
                 # Match any remaining bet if needed
                 if player_invested < opponent_invested and player_stack == 0:
@@ -202,14 +202,14 @@ class PokerGame:
                 raise_to = min(pot + amount_to_call, player_stack)
                 return raise_to
         
-        return 0  # Default to check
+        return 0  # default: check
 
 
     async def playerTwoDecision(self, hand, boards, player_stack, opponent_stack, pot, dealer, current_bet, opponent_invested, player_invested):
         # return: 0 (check), positive number (bet/raise amount), 2 (call), or 3 (fold)
         amount_to_call = current_bet - opponent_invested
         
-        # Determine allowed decisions based on game state
+        # allowed decisions based on game state
         if amount_to_call == 0:
             # No bet to call, can check or bet
             allowed_decisions = [0, 1]  # check, bet pot
@@ -219,7 +219,7 @@ class PokerGame:
         
         decision = await self.makeDecision(hand, boards, player_stack, opponent_stack, dealer, allowed_decisions, player_invested)
         
-        # No bet to call
+        # no bet to call
         if amount_to_call == 0:
             if decision == 0:  # Check
                 return 0
@@ -227,7 +227,7 @@ class PokerGame:
                 bet_size = min(pot, opponent_stack, player_stack)
                 return bet_size
         else:
-            # Bet to call
+            # bet to call
             if decision == 2:  # Call
                 return 2
             elif decision == 3:  # Fold
@@ -238,59 +238,33 @@ class PokerGame:
         
         return 0
         
-    async def bet_round(self):
-        # Handle a betting round check/bet/call
-        if self.stacks[0] == 0 or self.stacks[1] == 0:
-            return 0
-        
-        print(f"\nPlayer 1 stack: {self.stacks[0]}, Player 2 stack: {self.stacks[1]}")
-        bet_input = input("Player 1, or fold (f), or call (c), or bet pot (p): ")
-        
-        if not bet_input.strip():
-            print("Player 1 checks")
-            return 0
-        
-        try:
-            bet_value = int(bet_input)
-            bet_value = min(bet_value, self.stacks[0], self.stacks[1])
-            
-            if bet_value > 0:
-                self.stacks[0] -= bet_value
-                self.stacks[1] -= bet_value
-                print(f"Player 1 bets {bet_value}")
-                print(f"Player 2 calls {bet_value}")
-                return bet_value * 2
-        except ValueError:
-            print("Invalid bet, checking instead")
-            return 0
-        
-        return 0
+    
 
     def pay_out(self, winnings_player1, winnings_player2, pot):
-        # pay out winners
+        # settle stacks
         self.stacks[0] += int(winnings_player1 * pot)
         self.stacks[1] += int(winnings_player2 * pot)
         return self.stacks
 
     def deal_hands(self, cards):
-        # Deal 4 cards to each player
+        # deal 4 cards to each player
         return [cards[:4], cards[4:8]]
 
     def deal_flops(self, cards):
-        # Deal two flops
+        # deal two flops
         return [cards[8:11], cards[11:14]]
 
     def deal_turns(self, cards, board1, board2):
-        # Deal turn cards to both boards
+        # deal turn cards to both boards
         return [board1 + [cards[14]], board2 + [cards[15]]]
 
     def deal_rivers(self, cards, board1, board2):
-        # Deal river cards to both boards
+        # deal river cards to both boards
         return [board1 + [cards[16]], board2 + [cards[17]]]
 
     def omaha_hand_strength(self, hand, board):
-        # Calculate best Omaha hand (2 from hand, 3 from board)
-        # Returns, (hand_rank, best_five_cards)
+        # calculate best Omaha hand (2 from hand, 3 from board)
+        # return: (hand_rank, best_five_cards)
         def card_rank(card):
             return ((card - 1) % 13) + 2  # 2-14, where 14 = Ace
 
@@ -396,12 +370,12 @@ class PokerGame:
         return best, best_five
 
     def showdown(self, hands, boards, log_cards):
-        # Determine winners on both boards
-        # Player 1s best hands on both boards
+        # determine winners on both boards
+        # player 1's best hands on both boards
         best_hand_b1_p1, cards_b1_p1 = self.omaha_hand_strength(hands[0], boards[0])
         best_hand_b2_p1, cards_b2_p1 = self.omaha_hand_strength(hands[0], boards[1])
         
-        # Player 2s best hands on both boards
+        # player 2's best hands on both boards
         best_hand_b1_p2, cards_b1_p2 = self.omaha_hand_strength(hands[1], boards[0])
         best_hand_b2_p2, cards_b2_p2 = self.omaha_hand_strength(hands[1], boards[1])
         
@@ -416,7 +390,7 @@ class PokerGame:
         print("Board 2: ")
         log_cards("", boards[1])
         
-        # Board 1
+        # board 1
         if best_hand_b1_p1 > best_hand_b1_p2:
             winnings_player1 += 0.5
             print("Player 1 wins Board 1 with hand: ")
@@ -434,7 +408,7 @@ class PokerGame:
             winnings_player2 += 0.25
             print("Board 1 is a tie")
         
-        # Board 2
+        # board 2
         if best_hand_b2_p1 > best_hand_b2_p2:
             winnings_player1 += 0.5
             print("Player 1 wins Board 2 with hand: ")

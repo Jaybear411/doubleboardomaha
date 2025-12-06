@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test trained NFSP model against random player"""
 
 import torch
@@ -9,13 +8,13 @@ from game import PokerGame
 
 
 class RandomPlayer:
-    """Picks random actions"""
+    #picks random actions
     def get_action(self, legal_actions):
         return random.choice(legal_actions)
 
 
 class TrainedPlayer:
-    """Trained NFSP model"""
+    #trained NFSP model
     def __init__(self):
         self.agent = NFSPAgent(state_dim=STATE_DIM, device='cpu')
         
@@ -29,20 +28,20 @@ class TrainedPlayer:
             self.agent.q_network.eval()
             self.agent.policy_network.eval()
             self.agent.epsilon = 0.05  # Small exploration during testing
-            print("✓ Loaded trained model (eps=0.05)\n")
+            print("Loaded trained model (eps=0.05).")
         except FileNotFoundError:
-            print("⚠ Model files not found, using random\n")
+            print("Model files not found, using random.")
     
     def get_action(self, hand, boards, pot, stacks, position, street, bet_to_call, legal_actions):
         state = encode_state(hand, boards, pot, stacks, position, street, bet_to_call)
         with torch.no_grad():
-            # Use RL (Q-network) - the trained policy
+            # use RL (Q-network)
             action, _ = self.agent.select_action(state, legal_actions, mode='rl')
         return action
 
 
 async def play_hand(trained, random_player, trained_pos=0):
-    """Play one hand, return chip profit for trained player"""
+    #play one hand, return chip profit for trained player
     stacks = [100, 100]
     initial = [100, 100]
     bb = 1
@@ -137,9 +136,7 @@ async def play_hand(trained, random_player, trained_pos=0):
 
 
 async def test_vs_random(num_hands=1000):
-    print("=" * 60)
-    print("TESTING: Trained Model vs Random Player")
-    print("=" * 60 + "\n")
+    print("Trained Model vs Random Player")
     
     trained = TrainedPlayer()
     random_player = RandomPlayer()
@@ -147,7 +144,7 @@ async def test_vs_random(num_hands=1000):
     total = 0
     results = []
     
-    print(f"Playing {num_hands} hands...\n")
+    print(f"Playing {num_hands} hands")
     
     for i in range(num_hands):
         pos = i % 2
@@ -166,31 +163,19 @@ async def test_vs_random(num_hands=1000):
     losses = sum(1 for r in results if r < 0)
     ties = sum(1 for r in results if r == 0)
     
-    print("\n" + "=" * 60)
-    print("RESULTS")
-    print("=" * 60)
     print(f"Total hands:    {num_hands}")
     print(f"Total chips:    {total:+.1f}")
     print(f"EV/hand:        {ev:+.3f} bb/hand")
     print(f"Std dev:        {std:.3f}")
     print(f"Win/Loss/Tie:   {wins}/{losses}/{ties}")
     
-    print("\n" + "-" * 60)
-    if ev > 0.5:
-        print(f"✓ Crushing random! (+{ev:.2f} bb/hand)")
-    elif ev > 0.2:
-        print(f"✓ Clearly better (+{ev:.2f} bb/hand)")
-    elif ev > -0.05:
-        print(f"≈ Roughly equal ({ev:+.2f} bb/hand)")
-    else:
-        print(f"⚠ Losing to random ({ev:+.2f} bb/hand)")
-    print("=" * 60)
+    print(f"Ev vs random: {ev:.2f} bb/hand")
+
 
 
 def main():
-    import sys
-    num_hands = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    asyncio.run(test_vs_random(num_hands))
+    num_hands = 5000
+    test_vs_random(num_hands)
 
 
 if __name__ == "__main__":

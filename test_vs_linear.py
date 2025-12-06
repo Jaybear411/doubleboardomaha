@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Test trained NFSP model against rule-based linear player"""
+"""Test trained NFSP model against heuristic linear player"""
 
 import torch
 import random
@@ -9,7 +8,7 @@ from game import PokerGame
 
 
 class LinearPlayer:
-    """Rule-based: bet/raise with 2 pair+, otherwise check/fold"""
+    #rule-based: bet/raise with 2 pair+, otherwise check/fold
     def __init__(self):
         self.game = PokerGame([100, 100], 1, 0)
     
@@ -25,7 +24,7 @@ class LinearPlayer:
                 rank2, _ = self.game.omaha_hand_strength(hand, boards[1])
                 best_rank = max(best_rank, rank2[0])
         
-        has_strong = best_rank >= 2  # Two pair or better
+        has_strong = best_rank >= 2  # two pair or better
         
         if bet_to_call > 0:
             if has_strong:
@@ -33,7 +32,7 @@ class LinearPlayer:
                     return 1  # raise pot
                 return 0  # call
             else:
-                return 3  # fold
+                return 3  # fold (fold)
         else:
             if has_strong:
                 if random.random() < 0.6:
@@ -45,7 +44,7 @@ class LinearPlayer:
 
 
 class TrainedPlayer:
-    """Trained NFSP model"""
+    #trained NFSP model
     def __init__(self):
         self.agent = NFSPAgent(state_dim=STATE_DIM, device='cpu')
         
@@ -59,20 +58,20 @@ class TrainedPlayer:
             self.agent.q_network.eval()
             self.agent.policy_network.eval()
             self.agent.epsilon = 0.05  # Small exploration during testing
-            print("✓ Loaded trained model (eps=0.05)\n")
+            print("Loaded trained model (eps=0.05).")
         except FileNotFoundError:
-            print("⚠ Model files not found, using random\n")
+            print("Model files not found, using random.")
     
     def get_action(self, hand, boards, pot, stacks, position, street, bet_to_call, legal_actions):
         state = encode_state(hand, boards, pot, stacks, position, street, bet_to_call)
         with torch.no_grad():
-            # Use RL (Q-network) since that's what was trained during pretrain
+            # use RL (Q-network) since that's what was trained during pretrain
             action, _ = self.agent.select_action(state, legal_actions, mode='rl')
         return action
 
 
 async def play_hand(trained, linear, trained_pos=0):
-    """Play one hand, return chip profit for trained player"""
+    #play one hand, return chip profit for trained player
     stacks = [100, 100]
     initial = [100, 100]
     bb = 1
@@ -167,20 +166,14 @@ async def play_hand(trained, linear, trained_pos=0):
 
 
 async def test_vs_linear(num_hands=1000):
-    print("=" * 60)
-    print("TESTING: Trained Model vs Linear Player (SIMPLIFIED)")
-    print("=" * 60)
-    print("Linear: bet/raise with 2 pair+, check/fold otherwise")
-    print("Game: FLOP + TURN only (no river), pot-limit")
-    print("=" * 60 + "\n")
-    
+    print("Trained Model vs Linear Player (simplified)")    
     trained = TrainedPlayer()
     linear = LinearPlayer()
     
     total = 0
     results = []
     
-    print(f"Playing {num_hands} hands...\n")
+    print(f"Playing {num_hands} hands")
     
     for i in range(num_hands):
         pos = i % 2
@@ -199,31 +192,20 @@ async def test_vs_linear(num_hands=1000):
     losses = sum(1 for r in results if r < 0)
     ties = sum(1 for r in results if r == 0)
     
-    print("\n" + "=" * 60)
-    print("RESULTS")
-    print("=" * 60)
+
     print(f"Total hands:    {num_hands}")
     print(f"Total chips:    {total:+.1f}")
     print(f"EV/hand:        {ev:+.3f} bb/hand")
     print(f"Std dev:        {std:.3f}")
     print(f"Win/Loss/Tie:   {wins}/{losses}/{ties}")
     
-    print("\n" + "-" * 60)
-    if ev > 0.3:
-        print(f"✓ Beating linear! (+{ev:.2f} bb/hand)")
-    elif ev > 0.1:
-        print(f"✓ Better than linear (+{ev:.2f} bb/hand)")
-    elif ev > -0.05:
-        print(f"≈ Roughly equal ({ev:+.2f} bb/hand)")
-    else:
-        print(f"⚠ Losing to linear ({ev:+.2f} bb/hand)")
-    print("=" * 60)
+    print(f"Ev vs linear: {ev:.2f} bb/hand")
+
 
 
 def main():
-    import sys
-    num_hands = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    asyncio.run(test_vs_linear(num_hands))
+    num_hands = 5000
+    test_vs_linear(num_hands)
 
 
 if __name__ == "__main__":
